@@ -137,18 +137,12 @@ EOF
 
 # --- 4. THUMBNAIL GENERATION ---
 echo "🖼️ Generating Thumbnail..."
-
 TARGET_WORD=$(python3 -c "
 import sys, re
 title = sys.argv[1].strip()
 words = title.split()
-
 first = words[0].lower() if words else 'music'
-
-# Strip weird punctuation but KEEP numbers this time
 res = re.sub(r'[^a-z0-9]', '', first)
-
-# Force strictly lowercase and append the period (No number-to-text conversion)
 final_text = f'{res}.'.lower()
 print(final_text)
 " "$SELECTED_TITLE")
@@ -173,29 +167,50 @@ MERGED_AUDIO="$TMP_DIR/merged_audio.m4a"
 ffmpeg -f concat -safe 0 -i "$TMP_DIR/audio_list.txt" \
   -vn -ar 44100 -ac 2 -c:a aac -b:a 128k "$RAW_AUDIO" -y -loglevel error
 
-DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$RAW_AUDIO")
-AUDIO_FADE_START=$(awk -v d="$DURATION" 'BEGIN { printf "%.2f", (d > 2) ? d - 2 : 0 }')
+DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$RAW_AUDIO" | tr -d '\n' | tr -d '\r')
+AUDIO_FADE_START=$(awk -v d="$DURATION" 'BEGIN { printf "%.2f", (d > 3) ? d - 3 : 0 }')
 
+# 3-second audio fades
 ffmpeg -i "$RAW_AUDIO" \
-  -af "afade=t=in:st=0:d=2,afade=t=out:st=${AUDIO_FADE_START}:d=2" \
+  -af "afade=t=in:st=0:d=3,afade=t=out:st=${AUDIO_FADE_START}:d=3" \
   -c:a aac -b:a 128k "$MERGED_AUDIO" -y -loglevel error
 
 # --- 6. RENDER VIDEO ---
-echo "🎬 Step 3: Blending visuals..."
-read INTRO_DUR MID_DUR NUM_MIDS OUTRO_DUR OUTRO_FADE_START <<< $(python3 -c "
+echo "🎬 Step 3: Fast chunking with synchronized loop..."
+
+# Dynamically measure the exact length of the effect video
+EFFECT_DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$ASSETS_DIR/effect.mp4" | tr -d '\n' | tr -d '\r')
+if ! [[ $EFFECT_DUR =~ ^[0-9]+(\.[0-9]+)?$ ]]; then EFFECT_DUR=10.0; fi
+
+read INTRO_DUR MID_DUR NUM_MIDS OUTRO_DUR OUTRO_FADE_START CHUNK_DUR <<< $(python3 -c "
+import math
 dur = float('$DURATION')
-intro = 8.0
-mid = 10.0
-num_mids = int((dur - intro - 4.0) // mid)
-outro = round(dur - intro - (num_mids * mid), 2)
-fade_start = round(max(0.1, outro - 2.0), 2)
-print(f'{intro} {mid} {num_mids} {outro} {fade_start}')
+effect_dur = float('$EFFECT_DUR')
+if effect_dur <= 0: effect_dur = 10.0
+
+# Create a chunk large enough to fit the Spotify logo, ending EXACTLY on an effect loop boundary
+multiplier = max(1, math.ceil(10.0 / effect_dur))
+chunk_dur = round(effect_dur * multiplier, 3)
+
+intro_dur = chunk_dur
+mid_dur = chunk_dur
+num_mids = int((dur - intro_dur) // mid_dur)
+outro_dur = round(dur - intro_dur - (num_mids * mid_dur), 2)
+
+# Ensure the outro is at least 3 seconds for the fade-out
+if outro_dur < 3.0 and num_mids > 0:
+    num_mids -= 1
+    outro_dur += mid_dur
+
+fade_start = round(max(0.1, outro_dur - 3.0), 2)
+print(f'{intro_dur} {mid_dur} {num_mids} {outro_dur} {fade_start} {chunk_dur}')
 ")
 
 BLENDED_MASTER="$TMP_DIR/blended_master.mp4"
 
+# Generate a master chunk that matches your effect's exact duration
 ffmpeg -loop 1 -framerate 24 -i "$TMP_DIR/wallpaper.jpg" \
-  -stream_loop -1 -i "$ASSETS_DIR/effect.mp4" -t 15 \
+  -stream_loop -1 -i "$ASSETS_DIR/effect.mp4" -t "$CHUNK_DUR" \
   -filter_complex "\
     [0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=24,format=gbrp[bg];\
     [1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=24,format=gbrp[eff];\
@@ -204,15 +219,18 @@ ffmpeg -loop 1 -framerate 24 -i "$TMP_DIR/wallpaper.jpg" \
 
 ENC_FLAGS="-c:v libx264 -profile:v high -level:v 4.0 -preset veryfast -crf 26 -maxrate 1500k -bufsize 3000k -r 24 -pix_fmt yuv420p -video_track_timescale 12288 -an"
 
+# Apply 3-second video fade in to intro
 ffmpeg -i "$BLENDED_MASTER" -loop 1 -framerate 24 -i "$ASSETS_DIR/spotify.png" \
   -filter_complex "\
-    [0:v]fade=t=in:st=0:d=2[base];\
+    [0:v]fade=t=in:st=0:d=3[base];\
     [1:v]scale=180:-1,format=rgba,fade=t=in:st=1:d=1:alpha=1,fade=t=out:st=6:d=1:alpha=1[logo];\
     [base][logo]overlay=x=30:y=30:enable='between(t,1,7)',format=yuv420p[outv]" \
   -map "[outv]" -t "$INTRO_DUR" $ENC_FLAGS "$TMP_DIR/intro.mp4" -y -loglevel error
 
 ffmpeg -i "$BLENDED_MASTER" -t "$MID_DUR" $ENC_FLAGS "$TMP_DIR/middle.mp4" -y -loglevel error
-ffmpeg -i "$BLENDED_MASTER" -t "$OUTRO_DUR" -vf "fade=t=out:st=${OUTRO_FADE_START}:d=2" $ENC_FLAGS "$TMP_DIR/outro.mp4" -y -loglevel error
+
+# Apply 3-second video fade out to outro
+ffmpeg -i "$BLENDED_MASTER" -t "$OUTRO_DUR" -vf "fade=t=out:st=${OUTRO_FADE_START}:d=3" $ENC_FLAGS "$TMP_DIR/outro.mp4" -y -loglevel error
 
 VIDEO_LIST="$TMP_DIR/video_list.txt"
 echo "file '$TMP_DIR/intro.mp4'" > "$VIDEO_LIST"
