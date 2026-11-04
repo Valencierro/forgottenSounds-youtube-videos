@@ -10,7 +10,7 @@ mkdir -p "$OUTPUT_DIR" "$ASSETS_DIR" "$TMP_DIR/audio"
 export WALLPAPER_FOLDER_ID="1tIUGM5qP9KaXxJAComRQaL-N9DsBtatz"
 export ARCHIVE_FOLDER_ID="190G9vBYRwQb4VqHGfmGExdjhH0phgA4t" 
 export AUDIO_FOLDER_ID="1IgGUF3cbHUU5YpG7s5QLKRBDQsuV81FU"
-export SCRATCHES_FOLDER_ID="1uWH4LrxLzfh_z-Q7DU6E64t8A5rZQZVh"
+export EFFECTS_FOLDER_ID="1uWH4LrxLzfh_z-Q7DU6E64t8A5rZQZVh"
 export SPOTIFY_FILE_ID="1fIcEuSGsSBaRWO9OsFZYCTcynhMs7XOh"
 export SPOTIFY_PLAYLIST="https://open.spotify.com/playlist/0s4PNkZa5d7asmDZdGKJAn?go=1"
 export APPLE_MUSIC_PLAYLIST="https://music.apple.com/in/playlist/pl.u-r2yBDbPCREqBKRZ"
@@ -30,7 +30,7 @@ SELECTED_TITLE=$(shuf -n 1 "$ASSETS_DIR/titles.txt")
 export SAFE_TITLE=$(echo "$SELECTED_TITLE" | tr ' ' '_')
 echo "🏷️ Selected Title: $SELECTED_TITLE -> $SAFE_TITLE.mp4"
 
-if [ -f "$ASSETS_DIR/scratches.mp4" ]; then export NEED_SCRATCHES_DOWNLOAD="0"; else export NEED_SCRATCHES_DOWNLOAD="1"; fi
+if [ -f "$ASSETS_DIR/effect.mp4" ]; then export NEED_EFFECT_DOWNLOAD="0"; else export NEED_EFFECT_DOWNLOAD="1"; fi
 if [ -f "$ASSETS_DIR/spotify.png" ]; then export NEED_SPOTIFY_DOWNLOAD="0"; else export NEED_SPOTIFY_DOWNLOAD="1"; fi
 
 echo "📥 Step 1: Fetching Wallpaper & Batch Audio..."
@@ -46,9 +46,9 @@ tmp_dir = os.environ["TMP_DIR"]
 assets_dir = os.environ["ASSETS_DIR"]
 wallpaper_folder = os.environ["WALLPAPER_FOLDER_ID"]
 audio_folder = os.environ["AUDIO_FOLDER_ID"]
-scratches_folder = os.environ["SCRATCHES_FOLDER_ID"]
+effects_folder = os.environ["EFFECTS_FOLDER_ID"]
 spotify_file_id = os.environ["SPOTIFY_FILE_ID"]
-need_scratches = os.environ["NEED_SCRATCHES_DOWNLOAD"] == "1"
+need_effect = os.environ["NEED_EFFECT_DOWNLOAD"] == "1"
 need_spotify = os.environ["NEED_SPOTIFY_DOWNLOAD"] == "1"
 min_dur = float(os.environ["MIN_DURATION"])
 
@@ -81,10 +81,10 @@ download_file(wp["id"], os.path.join(tmp_dir, "wallpaper.jpg"))
 with open(os.path.join(tmp_dir, "wp_id.txt"), "w") as f:
     f.write(wp["id"])
 
-if need_scratches:
-    scr_res = service.files().list(q=f"'{scratches_folder}' in parents and mimeType contains 'video/' and trashed=false", pageSize=1, fields="files(id)").execute()
-    if scr_res.get("files"): download_file(scr_res["files"][0]["id"], os.path.join(assets_dir, "scratches.mp4"))
-    
+if need_effect:
+    eff_res = service.files().list(q=f"'{effects_folder}' in parents and mimeType contains 'video/' and trashed=false", pageSize=1, fields="files(id)").execute()
+    if eff_res.get("files"): download_file(eff_res["files"][0]["id"], os.path.join(assets_dir, "effect.mp4"))
+
 if need_spotify:
     try: download_file(spotify_file_id, os.path.join(assets_dir, "spotify.png"))
     except: pass
@@ -195,11 +195,11 @@ print(f'{intro} {mid} {num_mids} {outro} {fade_start}')
 BLENDED_MASTER="$TMP_DIR/blended_master.mp4"
 
 ffmpeg -loop 1 -framerate 24 -i "$TMP_DIR/wallpaper.jpg" \
-  -stream_loop -1 -i "$ASSETS_DIR/scratches.mp4" -t 15 \
+  -stream_loop -1 -i "$ASSETS_DIR/effect.mp4" -t 15 \
   -filter_complex "\
     [0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=24,format=gbrp[bg];\
-    [1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=24,format=gbrp[scr];\
-    [bg][scr]blend=all_mode=screen:all_opacity=1.0,format=yuv420p[v]" \
+    [1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=24,format=gbrp[eff];\
+    [bg][eff]blend=all_mode=screen:all_opacity=1.0,format=yuv420p[v]" \
   -map "[v]" -c:v libx264 -preset veryfast -crf 20 -an "$BLENDED_MASTER" -y -loglevel error
 
 ENC_FLAGS="-c:v libx264 -profile:v high -level:v 4.0 -preset veryfast -crf 26 -maxrate 1500k -bufsize 3000k -r 24 -pix_fmt yuv420p -video_track_timescale 12288 -an"
