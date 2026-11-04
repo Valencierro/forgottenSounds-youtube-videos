@@ -82,8 +82,9 @@ with open(os.path.join(tmp_dir, "wp_id.txt"), "w") as f:
     f.write(wp["id"])
 
 if need_scratches:
-scr_res = service.files().list(q=f"'{scratches_folder}' in parents and mimeType contains 'video/' and trashed=false", pageSize=1, fields="files(id)").execute()    if scr_res.get("files"): download_file(scr_res["files"][0]["id"], os.path.join(assets_dir, "scratches.mp4"))
-
+    scr_res = service.files().list(q=f"'{scratches_folder}' in parents and mimeType contains 'video/' and trashed=false", pageSize=1, fields="files(id)").execute()
+    if scr_res.get("files"): download_file(scr_res["files"][0]["id"], os.path.join(assets_dir, "scratches.mp4"))
+    
 if need_spotify:
     try: download_file(spotify_file_id, os.path.join(assets_dir, "spotify.png"))
     except: pass
