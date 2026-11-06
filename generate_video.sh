@@ -278,11 +278,11 @@ https://www.fiverr.com/hitblazz/promote-your-ambient-music-tracks
     gh release create "$TAG_NAME" "$OUT_FILE" "$THUMBNAIL_FILE" --title "$CLEAN_TITLE" --notes "$DESCRIPTION"
     echo "✅ GitHub Release created successfully!"
     
-    # --- 8. SEND WEBHOOK ---
+   # --- 8. SEND WEBHOOK ---
     echo "🌐 Step 5: Sending Webhook..."
     
-    # Extract asset URLs from the release
-    VIDEO_URL=$(gh release view "$TAG_NAME" --json assets --jq '.assets[] | select(.name == "'"$OUT_FILENAME"'") | .url')
+    # Extract asset URLs from the release (Fixed to ignore GitHub name changes)
+    VIDEO_URL=$(gh release view "$TAG_NAME" --json assets --jq '.assets[] | select(.name | endswith(".mp4")) | .url')
     THUMB_URL=$(gh release view "$TAG_NAME" --json assets --jq '.assets[] | select(.name == "thumbnail.jpg") | .url')
     
     # Generate custom caption with actual links
