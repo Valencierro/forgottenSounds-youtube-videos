@@ -21,7 +21,7 @@ export MIN_DURATION=3600
 export MAX_DURATION=3900  
 
 # Add your Webhook URL here
-export WEBHOOK_URL="https://your-webhook-endpoint.com/here"
+export WEBHOOK_URL="https://connect.pabbly.com/webhook-listener/webhook/IjU3NjIwNTZlMDYzNDA0MzU1MjY4NTUzNiI_3D_pc/IjU3NjcwNTZiMDYzNDA0MzI1MjZhNTUzMzUxMzAi_pc"
 
 # --- 2. ASSET CHECK & RANDOM TITLE GENERATION ---
 if [ ! -f "$ASSETS_DIR/titles.txt" ]; then
