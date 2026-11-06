@@ -307,18 +307,20 @@ $AMAZON_MUSIC_PLAYLIST"
         echo "⚠️ WEBHOOK_URL not configured. Skipping webhook step."
     fi
 
-    # ---------------------------------------------------------
+  # ---------------------------------------------------------
     # SMART CLEANUP: Keeps the latest 3 releases, deletes the rest
     # ---------------------------------------------------------
     echo "🧹 Cleaning up old releases (Keeping latest 3 for Zapier)..."
     
-    gh release list --limit 100 | awk '{print $1}' | grep '^video-' | tail -n +4 | while read -r OLD_TAG; do
+    # Safely extract tag names using JSON to avoid filename space issues
+    gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^video-' | tail -n +4 | while read -r OLD_TAG; do
         if [ -n "$OLD_TAG" ]; then
-            echo "Deleting old release: $OLD_TAG"
+            echo "Deleting old release and tag: $OLD_TAG"
             gh release delete "$OLD_TAG" -y --cleanup-tag || true
         fi
     done
     
+    # Secondary cleanup for orphaned git tags on the remote
     git fetch --tags --force
     git tag -l "video-*" | sort -rV | tail -n +4 | while read -r LEFTOVER_TAG; do
         if [ -n "$LEFTOVER_TAG" ]; then
