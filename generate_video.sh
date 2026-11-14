@@ -255,7 +255,7 @@ echo "✅ Video created: $OUT_FILE ($(du -h "$OUT_FILE" | cut -f1))"
 if [ -f "$OUT_FILE" ]; then
     echo "📤 Step 4: Pushing to GitHub Releases..."
     
-DESCRIPTION="🎧 Listen on Spotify:
+    DESCRIPTION="🎧 Listen on Spotify:
 $SPOTIFY_PLAYLIST
 
 🎵 Listen on Apple Music:
@@ -278,36 +278,7 @@ https://www.fiverr.com/hitblazz/promote-your-ambient-music-tracks
     gh release create "$TAG_NAME" "$OUT_FILE" "$THUMBNAIL_FILE" --title "$CLEAN_TITLE" --notes "$DESCRIPTION"
     echo "✅ GitHub Release created successfully!"
     
-   # --- 8. SEND WEBHOOK ---
-    echo "🌐 Step 5: Sending Webhook..."
-    
-    # Extract asset URLs from the release (Fixed to ignore GitHub name changes)
-    VIDEO_URL=$(gh release view "$TAG_NAME" --json assets --jq '.assets[] | select(.name | endswith(".mp4")) | .url')
-    THUMB_URL=$(gh release view "$TAG_NAME" --json assets --jq '.assets[] | select(.name == "thumbnail.jpg") | .url')
-    
-    # Generate custom caption with actual links
-    CAPTION="Listen on $SPOTIFY_PLAYLIST
-$APPLE_MUSIC_PLAYLIST
-$YOUTUBE_MUSIC_PLAYLIST
-$AMAZON_MUSIC_PLAYLIST"
-
-    # Use jq to securely build the JSON payload
-    JSON_PAYLOAD=$(jq -n \
-      --arg video "$VIDEO_URL" \
-      --arg thumb "$THUMB_URL" \
-      --arg caption "$CAPTION" \
-      '{video_url: $video, thumbnail_url: $thumb, caption: $caption}')
-
-    if [ -n "$WEBHOOK_URL" ] && [ "$WEBHOOK_URL" != "https://your-webhook-endpoint.com/here" ]; then
-        curl -s -X POST "$WEBHOOK_URL" \
-             -H "Content-Type: application/json" \
-             -d "$JSON_PAYLOAD"
-        echo -e "\n✅ Webhook dispatched successfully!"
-    else
-        echo "⚠️ WEBHOOK_URL not configured. Skipping webhook step."
-    fi
-
-  # ---------------------------------------------------------
+    # ---------------------------------------------------------
     # SMART CLEANUP: Keeps the latest 3 releases, deletes the rest
     # ---------------------------------------------------------
     echo "🧹 Cleaning up old releases (Keeping latest 3 for Zapier)..."
@@ -350,6 +321,40 @@ service.files().update(
 ).execute()
 print("✅ Wallpaper archived successfully.")
 EOF2
+
+    # --- 8. SEND WEBHOOK (MOVED TO END WITH ERROR LOGGING) ---
+    echo "🌐 Step 5: Sending Webhook..."
+    
+    # Extract asset URLs from the release
+    VIDEO_URL=$(gh release view "$TAG_NAME" --json assets --jq '.assets[] | select(.name | endswith(".mp4")) | .url')
+    THUMB_URL=$(gh release view "$TAG_NAME" --json assets --jq '.assets[] | select(.name == "thumbnail.jpg") | .url')
+    
+    # Generate custom caption with actual links
+    CAPTION="Listen on $SPOTIFY_PLAYLIST
+$APPLE_MUSIC_PLAYLIST
+$YOUTUBE_MUSIC_PLAYLIST
+$AMAZON_MUSIC_PLAYLIST"
+
+    # Use jq to securely build the JSON payload
+    JSON_PAYLOAD=$(jq -n \
+      --arg video "$VIDEO_URL" \
+      --arg thumb "$THUMB_URL" \
+      --arg caption "$CAPTION" \
+      '{video_url: $video, thumbnail_url: $thumb, caption: $caption}')
+
+    # Added check to ignore single space (" ") 
+    if [ -n "$WEBHOOK_URL" ] && [ "$WEBHOOK_URL" != "https://connect.pabbly.com/webhook-listener/webhook/IjU3NjIwNTZlMDYzNDA0MzU1MjY4NTUzNiI_3D_pc/IjU3NjcwNTZiMDYzNDA0MzI1MjZhNTUzMzUxMzAi_pc" ] && [ "$WEBHOOK_URL" != " " ]; then
+        # Run curl in an if/else to catch errors without triggering 'set -e'
+        if curl -s -S -X POST "$WEBHOOK_URL" \
+             -H "Content-Type: application/json" \
+             -d "$JSON_PAYLOAD"; then
+            echo -e "\n✅ Webhook dispatched successfully!"
+        else
+            echo -e "\n❌ Error: Failed to dispatch webhook. The URL might be invalid or the server returned an error."
+        fi
+    else
+        echo "⚠️ WEBHOOK_URL not configured. Skipping webhook step."
+    fi
 
 fi
 
